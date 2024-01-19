@@ -45,7 +45,7 @@ void setup()
   //create the variables that will be used in the recursive equations for calibration
   int dp0 = 0; //data point 0
   int dp1 = 0; //data point 1
-  int calibrationPoints = 2000; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate)
+  int calibrationPoints = 5000; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate)
 
   //calibrate the three gyro axes using the recursive avg filter
   
@@ -58,6 +58,7 @@ void setup()
    *  source: https://www.youtube.com/watch?v=HCd-leV8OkU&list=WL&index=8&t=2224s @10:30
    */
 
+  //Calibrate the gyro X axis
   Serial.println("Calibrating Gyroscope X axis, do not touch the sensor");
   for(int counter = 1; counter <= calibrationPoints; counter++)
   {
@@ -71,6 +72,8 @@ void setup()
       gxOffset = dp1;
     }
   }
+
+  //Calibrate the gyro Y axis
   Serial.println("Calibrating Gyroscope y axis, do not touch the sensor");
   //reset the datapoints to 0
   dp0=0;
@@ -85,6 +88,8 @@ void setup()
       gyOffset = dp1;
     }
   }
+
+  //Calibrate the gyro Z axis
   Serial.println("Calibrating Gyroscope z axis, do not touch the sensor");
   //reset the datapoints to 0
   dp0=0;
@@ -99,6 +104,8 @@ void setup()
       gzOffset = dp1;
     }
   }
+
+  //Tell the user the results of the gyro calibration
   Serial.println("Gyroscope calibration complete.");
   Serial.print(gxOffset); Serial.print("\t");
   Serial.print(gyOffset); Serial.print("\t");
@@ -109,54 +116,15 @@ void setup()
   pinMode(LED_PIN, OUTPUT);
 }
 
-long gxdp0 = 0;
-long gxdp1 = 0;
-long gydp0 = 0;
-long gydp1 = 0;
-long gzdp0 = 0;
-long gzdp1 = 0;
-long alpha = 0.7;
 void loop()
 {
+  //read the gyro data, and print it out to the serial port
+  Serial.print(imu1.getRotationX()-gxOffset); Serial.print("\t");
+  Serial.print(imu1.getRotationY()-gyOffset); Serial.print("\t");
+  Serial.print(imu1.getRotationZ()-gzOffset); Serial.print("\t");
+  Serial.println();
   
-  //Use a lowpas filter to filter the signal coming from the sensor
-
-  /*
-   * 1st ORDER LOW PASS FILTER:
-   * dataPoint1 = alpha*dataPoint0 + (1-alpha)*sensorReading
-   * 
-   * where (0 < alpha < 1) 
-   * alpha = 1 will have an extreme smoothing effect, and alpha = 0 will still have jagged noisy signal
-   * alpha = .7 is a good starting point.
-   */
-
-  //get the x gyroscope values from the imu, run them through a first order low pass filter
-  gxdp1 = alpha*gxdp0 + (1-alpha)*(imu1.getRotationX()-gxOffset);
-  Serial.println(gxdp1);
-  gxdp0 = gxdp1;
-
-  //ax = imu1.getAccelerationX() - axOffset;
-  //ay = imu1.getAccelerationY() - ayOffset;
-  //az = imu1.getAccelerationZ() - azOffset;
- 
-  //get the gyro values from the imu, and assign them to their respective variables
-  //gx = imu1.getRotationX() - gxOffset;
-  //gy = imu1.getRotationY() - gyOffset;
-  //gz = imu1.getRotationZ() - gzOffset; 
-
-
-  //print out the accelration values seperated by a tab space
-  //Serial.print(ax); Serial.print("\t");
-  //Serial.print(ay); Serial.print("\t");
-  //Serial.print(az); Serial.print("\t");
-  //Serial.println();
-
-  //print out the gyro values seperated by a tab space
-  //Serial.print(gx); Serial.print("\t");
-  //Serial.print(gy); Serial.print("\t");
-  //Serial.print(gz); Serial.print("\t");
-  //Serial.println();
-
+ //change the blinkstate and write it to the LED
   blinkstate = !blinkstate;
   digitalWrite(LED_PIN, blinkstate);
 }
