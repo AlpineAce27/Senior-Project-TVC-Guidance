@@ -51,6 +51,10 @@ void setup()
   pinMode(buzzer, OUTPUT);
   pinMode(safetySwitch, INPUT);
   pinMode(startButton, INPUT);
+  flashNumbers(1221, 500, 4);
+  digitalWrite(buzzer, HIGH);
+  delay(1000);
+  digitalWrite(buzzer, LOW);
 }
 
 void loop() 
@@ -101,6 +105,7 @@ void loop()
         digitalWrite(buzzer, HIGH);
         digitalWrite(relay, HIGH);
         flashNumbers(8888, 1000, 10);
+        delay(3000);
       }
 
       countdown = countdown-1;
