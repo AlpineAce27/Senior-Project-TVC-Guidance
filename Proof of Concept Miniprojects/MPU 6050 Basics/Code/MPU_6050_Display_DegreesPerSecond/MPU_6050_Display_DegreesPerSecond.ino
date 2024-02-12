@@ -12,18 +12,22 @@ int16_t ax, ay, az, gx, gy, gz;
 //pre-installed led is usually on pin 13
 #define LED_PIN 13
 
-  /*
-   * the mpu readings do not come back as flat 0's with no motion, so some offsets need to be applied to even them out and get them to a common datum
-   */
+/*
+* the mpu readings do not come back as flat 0's with no motion, so some offsets need to be applied to even them out and get them to a common datum
+*/
 int gxOffset = 0;
 int gyOffset = 0;
 int gzOffset = 0;
 
-  /*
-   * According to the datasheet, https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
-   * on page 12, it says "Sensitivity Scale Factor    FS_SEL=0      131       LSB/(º/s)" which means at the default Factor Scale setting of 0,
-   * it will give a reading of 131 per deg/sec. This is what we need to divide by to convert the readings into degree/sec.
-   */
+/*
+* According to the datasheet, https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
+* on page 12, it says "Sensitivity Scale Factor    FS_SEL=0      131       LSB/(º/s)" which means at the default Factor Scale setting of 0,
+* it will give a reading of 131 per deg/sec. This is what we need to divide by to convert the readings into degree/sec.
+*/
+int counter = 1; //tracks how many point have been avged
+int avg1 = 0;
+int avg0 = 0;
+int calibrationPoints = 1000; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate
 int gyroSensScaleFactor = 131;
 
 //make a bool blinkstate so we can blink the LED if needed
@@ -61,7 +65,7 @@ void setup()
   int counter = 1; //tracks how many point have been avged
   int avg1 = 0;
   int avg0 = 0;
-  int calibrationPoints = 100; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate)
+  int calibrationPoints = 1000; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate)
   
 
     for(int i = 1; i <= calibrationPoints; i++)
@@ -122,9 +126,10 @@ void setup()
     Serial.print("Gyro X axis offset: "); Serial.println(gxOffset);
     Serial.print("Gyro Y axis offset: "); Serial.println(gyOffset);
     Serial.print("Gyro Z axis offset: "); Serial.println(gzOffset);
+    Serial.print("Gyro Full Scale Range:  "); Serial.println(imu1.getFullScaleGyroRange());
     Serial.println("Gyroscope calibration complete!");
  
-  delay(5000);  
+  delay(10000);  
   
   pinMode(LED_PIN, OUTPUT);
 
