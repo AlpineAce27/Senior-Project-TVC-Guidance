@@ -13,12 +13,14 @@ bool clockwise = true;
 //create 6x 16 bit integers, 3 for xyz of acceleration and 3 for xyz gyroscope
 int16_t gx;
 
-
 /*
 * the mpu readings do not come back as flat 0's with no motion, so some offsets need to be applied to even them out and get them to a common datum
 */
 int gxOffset = 0;
-long angleX = 0;
+float angleX = 0;
+float refresh = 100;
+float deltaT = 1/refresh;
+float tempIMU;
 
 /*
 * According to the datasheet, https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
@@ -34,7 +36,6 @@ float gyroSensScaleFactor = 65.5;
 //make a bool blinkstate so we can blink the LED if needed
 bool blinkstate = false;
 
-//
 long loop_timer; 
 
 void setup() 
@@ -58,9 +59,9 @@ void setup()
   
  
   //create the variables that will be used in the averagin equations for calibration
-  int dp0;
-  long runningTotal = 0; //data point 0
-  int average = 0;
+  float dp0;
+  float runningTotal = 0; //data point 0
+  float average = 0;
   int calibrationPoints = 2000; //the amount of data points needed to reach full calibartion (more points will take longer, but be more accurate)
   
 
@@ -103,8 +104,19 @@ float fgx0 = 0; //Filtered Data Point 0 (previous filtered data)
 
 void loop()
 {
-  loop_timer = millis();                                          //Reset the loop timer
-  gx1 = (imu1.getRotationX()- gxOffset)/gyroSensScaleFactor;      //GYRO X AXIS get the data from the imu, apply the offset found earlier and then divided by the scale factor to find the deg/sec
+  loop_timer = millis();       
+  tempIMU = imu1.getRotationX();     //Reset the loop timer
+  gx1 = (tempIMU*2 - gxOffset)/gyroSensScaleFactor;      //GYRO X AXIS get the data from the imu, apply the offset found earlier and then divided by the scale factor to find the deg/sec
+ 
+  // Serial.print(gx1);
+  // Serial.print("  = (");
+  // Serial.print(tempIMU*2);
+  // Serial.print(" - ");
+  // Serial.print(gxOffset);
+  // Serial.print(") / ");
+  // Serial.print(gyroSensScaleFactor);
+  // Serial.println();
+  
   //run them through a first order low pass filter
   //fgx1 = 0.969*fgx0 + 0.0155*gx1 + 0.0155*gx0; 
   //update the variables for the next iteration
@@ -114,9 +126,8 @@ void loop()
   //print them to the serial port
   //Serial.print(gx1);
   //Serial.print(fgx0);
- 
-  //                                                  
-  angleX = gx1*0.05 + angleX;   //Calculate the traveled x angle and add this to the current x angle variable (1/20 = 0.1)
+                                            
+  angleX = (gx1*deltaT) + angleX;   //Calculate the traveled x angle and add this to the current x angle variable (1/20 = 0.1)
   Serial.println(angleX);
   
   if(xServoAngle <= 150 && clockwise == true)
@@ -133,6 +144,7 @@ void loop()
   }
 
   xServo.write(xServoAngle);
-  while(millis() < loop_timer + 50);
-  {}                                                              //Wait until the loop_timer reaches 50 milliseconds (20Hz) before starting the next loop                                            
+
+  while(millis() < loop_timer + 1000/refresh);
+  {}                                                              //Wait until the loop_timer reaches 20 milliseconds (10Hz) before starting the next loop                                            
 }
