@@ -24,6 +24,8 @@ float total;
 int calibrationPoints = 2000;
 
 //Angle variables, one for the set angle and one for the observed/measured angle
+float angularVelX = 0;
+float XAngleDesired = 0; //we want the servo to attempt to keep the sensor flat on the X axis
 int xAngleSet = 90;
 float xAngleMeasured = 0;
 
@@ -32,8 +34,12 @@ float refresh = 100; //this is in hz
 float deltaT = 1/refresh;
 long loop_timer;
 
-//other variables
-float angularVelX = 0;
+//PID variables
+float xError = 0;
+float pGain = 0.1;
+float iGain = 1;
+float dGain = 1;
+
 
 //------------------------------------------------SET UP----------------------------------------------
 
@@ -60,6 +66,7 @@ void setup()
   //assign the servo to a pin and set it to a starting angle
   servoX.attach(servoXPin);
   servoX.write(xAngleSet);
+  delay(5000);
   
 }
 
@@ -70,12 +77,15 @@ void loop()
   loop_timer = millis();
 
   gx = imu1.getRotationX();
-
   angularVelX = (gx - gxOffset)/gyroScaleFactor;
-  
-  xAngleMeasured = angularVelX*deltaT + xAngleMeasured;
+  xAngleMeasured = angularVelX*deltaT + xAngleMeasured; Serial.println(xAngleMeasured);
 
-  Serial.println(xAngleMeasured);
+  //determine the error between where we are, and where we want to be
+  xError = XAngleDesired - xAngleMeasured;
+
+  //multiply this error by the P gain and write it to the servo
+  xAngleSet = xAngleSet + xError*pGain;
+  servoX.write(xAngleSet);
   
   while(millis() < loop_timer + 1000/refresh); {} 
 }
