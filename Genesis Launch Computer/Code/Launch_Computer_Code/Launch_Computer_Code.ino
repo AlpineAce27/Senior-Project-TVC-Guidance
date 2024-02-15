@@ -7,12 +7,15 @@ RESOURCES:
 #include <TM1637Display.h>
 #include <Wire.h>
 
+//Pin Assignments
 const int relay = 2;
 const int buzzer = 3;
 const int safetySwitch = 4;
 const int startButton = 5;
 const int DIO = 6;
 const int CLK = 7;
+
+//other variables
 int countdownStartingPoint= 10; //seconds to start the countdown at
 int countdown = 0;
 bool blinkstate = true;
@@ -52,7 +55,7 @@ void setup()
   pinMode(safetySwitch, INPUT);
   pinMode(startButton, INPUT);
   flashNumbers(1221, 500, 4);
-  digitalWrite(buzzer, HIGH);
+  //digitalWrite(buzzer, HIGH);
   delay(1000);
   digitalWrite(buzzer, LOW);
 }
@@ -68,7 +71,7 @@ void loop()
     readystate = true;
     if(CheckPin(startButton) == true)
     {
-      flashNumbers(5555, 50, 20);
+      flashNumbers(8888, 10, 5);
       launching = true;
     }
   }
@@ -89,7 +92,7 @@ void loop()
     //turn the buzzer on and off every second
     if (blinkstate == true)
     {
-      digitalWrite(buzzer, HIGH);
+      //digitalWrite(buzzer, HIGH);
     }
     else
     {
@@ -102,10 +105,13 @@ void loop()
     //if the countdown has concluded, start the engine
     if (countdown == 0)
       {
-        digitalWrite(buzzer, HIGH);
+        //digitalWrite(buzzer, HIGH);
         digitalWrite(relay, HIGH);
-        flashNumbers(8888, 1000, 10);
-        delay(3000);
+        flashNumbers(8888, 500, 6);
+        display.clear();
+        readystate = false;
+        launching = false;
+        delay(5000);
       }
 
       countdown = countdown-1;
