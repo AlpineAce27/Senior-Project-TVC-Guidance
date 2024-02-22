@@ -25,7 +25,7 @@ int calibrationPoints = 2000;
 
 //Angle variables, one for the set angle and one for the observed/measured angle
 float angularVelX = 0;
-float XAngleDesired = 0; //we want the servo to attempt to keep the sensor flat on the X axis
+float x = 0; //we want the servo to attempt to keep the sensor flat on the X axis
 int xAngleSet = 90;
 float xAngleMeasured = 0;
 
@@ -35,11 +35,18 @@ float deltaT = 1/refresh;
 long loop_timer;
 
 //PID variables
-float xError = 0;
-float pGain = 0.1;
-float iGain = 1;
-float dGain = 1;
+float pGain = 0.5; //
+float iGain = 0.0;
+float dGain = 0.5;
 
+float previousXError = 0;
+float currentXError = 0;
+float proportionalError = 0;
+float integralError = 0;
+float derivativeError = 0;
+
+//other variables
+float xAngleDesired = 0;
 
 //------------------------------------------------SET UP----------------------------------------------
 
@@ -76,16 +83,27 @@ void loop()
 {
   loop_timer = millis();
 
+  //calculate the current angle of the sensor
   gx = imu1.getRotationX();
   angularVelX = (gx - gxOffset)/gyroScaleFactor;
-  xAngleMeasured = angularVelX*deltaT + xAngleMeasured; Serial.println(xAngleMeasured);
+  xAngleMeasured = angularVelX*deltaT + xAngleMeasured; //Serial.println(xAngleMeasured);
 
   //determine the error between where we are, and where we want to be
-  xError = XAngleDesired - xAngleMeasured;
+  currentXError = xAngleDesired - xAngleMeasured;
 
-  //multiply this error by the P gain and write it to the servo
-  xAngleSet = xAngleSet + xError*pGain;
+  //apply this error into the PID components
+  proportionalError = currentXError;
+  integralError = integralError + currentXError*deltaT;
+  derivativeError = (currentXError - previousXError)/deltaT;
+
+  Serial.print(proportionalError); Serial.print(" | "); Serial.print(integralError); Serial.print(" | "); Serial.print(derivativeError); Serial.println(" | ");
+
+  //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
+  xAngleSet = xAngleSet + proportionalError*pGain + integralError*iGain + derivativeError*dGain;
   servoX.write(xAngleSet);
+  
+  //update the errors in preparation for the next loop
+  previousXError = currentXError;
   
   while(millis() < loop_timer + 1000/refresh); {} 
 }
