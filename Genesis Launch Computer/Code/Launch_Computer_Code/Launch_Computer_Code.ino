@@ -22,6 +22,11 @@ bool blinkstate = true;
 bool readystate = false;
 bool launching = false;
 
+//tone variables for the piezo buzzer
+const int happyTone = 3300;
+const int neutralTone = 3000;
+const int sadTone = 2000;
+
 // create a display object of type TM1637Display
 TM1637Display display = TM1637Display(CLK, DIO);
 
@@ -48,6 +53,15 @@ void flashNumbers(int number, int interval, int qty)
 
 void setup() 
 {
+  //wake up sequence
+  display.showNumberDecEx(8888, 0b11100000, false, 4, 0);
+  tone(buzzer, sadTone);
+  delay(100);
+  tone(buzzer, neutralTone);
+  delay(100);
+  tone(buzzer, happyTone);
+  delay(100);
+  noTone(buzzer);
   display.clear();
   display.setBrightness(7); // set the brightness to 7 (0:dimmest, 7:brightest)
   pinMode(relay, OUTPUT);
@@ -63,7 +77,7 @@ void setup()
 void loop() 
 {
   //check to see if the safety switch is flipped
-  if(CheckPin(safetySwitch) == true)
+  if(CheckPin(safetySwitch) == HIGH)
   {
     //if it is, then we are ready for launch. Flash 8's and sound the buzzer (the led should also show up red)
     display.showNumberDecEx(8888, 0b11100000, false, 4, 0);
@@ -88,30 +102,24 @@ void loop()
   while(launching == true && CheckPin(safetySwitch) == true)
   {
     display.showNumberDec(countdown); //display the countdown on the display
-    
-    //turn the buzzer on and off every second
-    if (blinkstate == true)
-    {
-      //digitalWrite(buzzer, HIGH);
-    }
-    else
-    {
-      digitalWrite(buzzer, LOW);
-    }
-
     //wait 1 second
-    delay(1000);
+    tone(buzzer, neutralTone);
+    delay(200);
+    noTone(buzzer);
+    delay(800);
     
-    //if the countdown has concluded, start the engine
+    //if the countdown has concluded, light the engine
     if (countdown == 0)
       {
         //digitalWrite(buzzer, HIGH);
         digitalWrite(relay, HIGH);
+        tone(buzzer, happyTone);
         flashNumbers(8888, 500, 6);
         display.clear();
         readystate = false;
         launching = false;
-        delay(5000);
+        digitalWrite(relay, LOW);
+        noTone(buzzer);
       }
 
       countdown = countdown-1;
