@@ -16,8 +16,8 @@ Servo servoAux2;
 
 //---------------------------------------------------------------PINS-------------------------------------------------------------------
 const int Servo1Pin =   2;
-const int Servo3Pin =   3;
-const int Servo2Pin =   4;
+const int Servo2Pin =   3;
+const int Servo3Pin =   4;
 const int Servo4Pin =   5;
 const int buzzer =      6;
 const int blueLED =     7;
@@ -45,6 +45,7 @@ bool armed = false;
 bool inFlight = false;
 bool landed = false;
 bool dataTransferred = false;
+
 //IMU gyro variables
 float gx;
 float gy;
@@ -76,20 +77,22 @@ float angularVelY = 0;
 float angularVelZ = 0;
 float xAngle = 0;
 float yAngle = 0;
-float zAnlge = 0;
+float zAngle = 0;
 
+int maximumXdeflection = 25;
+int maxiumumZdeflection = 25;
 int xTVCAngle = 90;
 int zTVCAngle = 90;
 int noseconeServoAngle = 90;
 
 //Timing variables
-float refresh = 100; //this is in hz
+float refresh = 50; //this is in hz
 float deltaT = 1/refresh;
 long loop_timer;
 
 //PID variables
 float pGain = 0.5; //
-float iGain = 0.0;
+float iGain = 0.5;
 float dGain = 0.5;
 
 //x axis PID components
@@ -108,7 +111,7 @@ float derivativeZError = 0;
 
 //other variables
 float xAngleDesired = 0;
-float yAngleDesired = 0;
+float zAngleDesired = 0;
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
@@ -198,6 +201,11 @@ void setup()
   pinMode(greenLED, OUTPUT);
   pinMode(arm, INPUT_PULLUP);
 
+  servoX.attach(Servo1Pin);
+  servoX.write(xTVCAngle);
+  servoZ.attach(Servo2Pin);
+  servoZ.write(zTVCAngle);
+
   digitalWrite(greenLED, HIGH);
   tone(buzzer, happyTone);
   delay(500);
@@ -224,50 +232,86 @@ void setup()
   Serial.println("Arming key present");
   digitalWrite(blueLED, LOW);
   armed = false;
-
-
+  delay(100);
   //now that the arming key is inserted, we wait until it is removed to arm the vehicle and begin data logging
-  while(digitalRead(arm) == HIGH)
-  {}
+  while(digitalRead(arm) == LOW)
+  { }
 
   /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
   Serial.println("Vehicle Armed.");
+  digitalWrite(greenLED, HIGH);
+  tone(buzzer, happyTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(greenLED, HIGH);
   armed = true;
   inFlight = false;
-  delay(10000);
+  delay(5000);
   /*once the vehicle is settled, use the accelerometers on the IMU to determine the current orientation of the vehicle 
   and assign them to the X Y and Z angle values. This will be the starting point for the control to kick in once the vehicle starts moving. */
 
+
+  //beep loudly to indicate startup
+  digitalWrite(buzzer, HIGH);
+  delay(2000);
+  digitalWrite(buzzer, LOW);
   
 }
 
 //---------------------------------------------------------------LOOP---------------------------------------------------------------
 void loop() 
 {
+  loop_timer = millis();
 
-  if(armed == true && inFlight == false)
-  {
-    //then we are waiting on the pad for ignition. We should be observing data often to detect liftoff, but logging data to memory slowly at once per second
-    //we should be observing the accelerometers, once we detect liftoff, "inFlight" should change to true.
-  }
-  if(armed == true && inFlight == true)
-  {
-    //the vehicle is airborne, we should be taking measurements more often now. (as fast as we can)
-    //active control should start
-    //once we detect no change in any sensor for more than 5 seconds, we can change "landed" to true and "inFlight" to false
-  }
-  if(landed == true && dataTransferred == false)
-  {
-    //change "armed" to false
-    //transfer data from flash to SD
-    //delete the file on the flash
-    //change "dataTransferred" to true
-  }            
-  while(landed == true && dataTransferred == true)
-  {
-    //beep loudly
-  }
+  //read the angular velocities from the sensor
+  gx = imu1.getRotationX();
+  gz = imu1.getRotationZ();
+
+  //adjust these values using the scale factor from the data sheet
+  angularVelX = (gx - gxOffset)/gyroScaleFactor;
+  angularVelZ = (gz - gzOffset)/gyroScaleFactor;
+
+  //convert the angular velocities into angular positions
+  xAngle = angularVelX*deltaT + xAngle; //Serial.println(xAngleMeasured);
+  zAngle = angularVelZ*deltaT + zAngle;
+
+  //determine the error between where we are, and where we want to be
+  currentXError = xAngleDesired - xAngle;
+  currentZError = zAngleDesired - zAngle;
+
+  //apply this error into the PID components
+  proportionalXError = currentXError;
+  proportionalZError = currentZError;
+  integralXError = integralXError + currentXError*deltaT;
+  integralZError = integralZError + currentZError*deltaT;
+  derivativeXError = (currentXError - previousXError)/deltaT;
+  derivativeZError = (currentZError = previousZError)/deltaT;
+
+  //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
+  
+  //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
+  xTVCAngle = xTVCAngle + proportionalXError*pGain + integralXError*iGain + derivativeXError*dGain;
+  zTVCAngle = zTVCAngle + proportionalZError*pGain + integralZError*iGain + derivativeZError*dGain;
+  
+  Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
+
+  //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
+  /*
+  if(xTVCAngle > maximumXdeflection)
+  {xTVCAngle = maximumXdeflection;}
+  if(xTVCAngle < (-1*maximumXdeflection)) 
+  {xTVCAngle = -1*maximumXdeflection;}
+  */
+
+  servoX.write(xTVCAngle);
+  servoZ.write(zTVCAngle);
+  
+  //update the errors in preparation for the next loop
+  previousXError = currentXError;
+  previousZError = currentZError;
+
+  while(millis() < loop_timer + 1000/refresh); {} 
 
 }
-
