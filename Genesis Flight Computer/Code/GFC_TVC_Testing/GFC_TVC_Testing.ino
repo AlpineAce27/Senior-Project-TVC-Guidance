@@ -80,7 +80,7 @@ float yAngle = 0;
 float zAngle = 0;
 
 int maximumXdeflection = 25;
-int maxiumumZdeflection = 25;
+int maximumZdeflection = 25;
 int xTVCAngle = 90;
 int zTVCAngle = 90;
 int noseconeServoAngle = 90;
@@ -91,9 +91,9 @@ float deltaT = 1/refresh;
 long loop_timer;
 
 //PID variables
-float pGain = 0.5; //
-float iGain = 0.5;
-float dGain = 0.5;
+float pGain = 50; //
+float iGain = 0;
+float dGain = 0;
 
 //x axis PID components
 float previousXError = 0;
@@ -112,6 +112,7 @@ float derivativeZError = 0;
 //other variables
 float xAngleDesired = 0;
 float zAngleDesired = 0;
+float acceptableMargin = 1;
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
@@ -149,6 +150,8 @@ void setup()
   imu1.setFullScaleGyroRange(FS_SEL);
   imu1.setFullScaleAccelRange(AFS_SEL);
   Serial.println("IMU Initialized");
+
+
 
   //SD Card
   if (!SD.begin(SDCS)) 
@@ -220,6 +223,7 @@ void setup()
   noTone(buzzer);
   digitalWrite(greenLED, LOW);
 
+/*
   //the arming key must be inserted for the program to continue
   Serial.println("Waiting on arming key");
   while (digitalRead(arm) == HIGH)
@@ -236,6 +240,7 @@ void setup()
   //now that the arming key is inserted, we wait until it is removed to arm the vehicle and begin data logging
   while(digitalRead(arm) == LOW)
   { }
+*/
 
   /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
@@ -249,12 +254,66 @@ void setup()
   armed = true;
   inFlight = false;
   delay(5000);
+
+  //We need to calibrate the IMU before we can effectively use it. Here we take many readings and averge them to get offset values
+  for(int i = 1; i <= calibrationPoints; i++)
+    {
+      gx = imu1.getRotationX();            
+      total = total + gx;
+      Serial.println(gx);    
+    }
+    //when the loop is finished, calculate the average of all the points and set it as the gyro X offset
+    gxOffset = total/calibrationPoints;
+  Serial.print("Gyro X Offset Value: "); Serial.println(gxOffset);
+  total = 0;
+
+  for(int i = 1; i <= calibrationPoints; i++)
+    {
+      gz = imu1.getRotationZ();            
+      total = total + gz;
+      Serial.println(gz);    
+    }
+    //when the loop is finished, calculate the average of all the points and set it as the gyro Z offset
+    gzOffset = total/calibrationPoints;
+  Serial.print("Gyro Z Offset Value: "); Serial.println(gzOffset);
+
+  //TVC deflection test
+  //while(1==1)
+  {
+  servoX.write(90+maximumXdeflection);
+  delay(500);
+  servoX.write(90-maximumXdeflection);
+  delay(500);
+  servoX.write(90);
+  delay(500);
+  servoZ.write(90+maximumZdeflection);
+  delay(500);
+  servoZ.write(90-maximumZdeflection);
+  delay(500);
+  servoZ.write(90);
+  delay(500);
+  servoX.write(90+maximumXdeflection);
+  servoZ.write(90+maximumZdeflection);
+  delay(500);
+  servoX.write(90+maximumXdeflection);
+  servoZ.write(90-maximumZdeflection);
+  delay(500);
+  servoX.write(90-maximumXdeflection);
+  servoZ.write(90-maximumZdeflection);
+  delay(500);
+  servoX.write(90-maximumXdeflection);
+  servoZ.write(90+maximumZdeflection);
+  delay(500);
+  servoX.write(90);
+  servoZ.write(90);
+  delay(1000);
+  }
   /*once the vehicle is settled, use the accelerometers on the IMU to determine the current orientation of the vehicle 
   and assign them to the X Y and Z angle values. This will be the starting point for the control to kick in once the vehicle starts moving. */
 
 
   //beep loudly to indicate startup
-  digitalWrite(buzzer, HIGH);
+  //digitalWrite(buzzer, HIGH);
   delay(2000);
   digitalWrite(buzzer, LOW);
   
@@ -274,8 +333,9 @@ void loop()
   angularVelZ = (gz - gzOffset)/gyroScaleFactor;
 
   //convert the angular velocities into angular positions
-  xAngle = angularVelX*deltaT + xAngle; //Serial.println(xAngleMeasured);
+  xAngle = angularVelX*deltaT + xAngle; 
   zAngle = angularVelZ*deltaT + zAngle;
+  Serial.print(xAngle); Serial.print(" | "); Serial.println(zAngle);
 
   //determine the error between where we are, and where we want to be
   currentXError = xAngleDesired - xAngle;
@@ -292,22 +352,40 @@ void loop()
   //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
   
   //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
-  xTVCAngle = xTVCAngle + proportionalXError*pGain + integralXError*iGain + derivativeXError*dGain;
-  zTVCAngle = zTVCAngle + proportionalZError*pGain + integralZError*iGain + derivativeZError*dGain;
+  xTVCAngle = xTVCAngle + proportionalXError*pGain/100 + integralXError*iGain/100 + derivativeXError*dGain/100;
+  zTVCAngle = zTVCAngle + proportionalZError*pGain/100 + integralZError*iGain/100 + derivativeZError*dGain/100;
   
-  Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
+  
 
   //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
-  /*
-  if(xTVCAngle > maximumXdeflection)
-  {xTVCAngle = maximumXdeflection;}
-  if(xTVCAngle < (-1*maximumXdeflection)) 
-  {xTVCAngle = -1*maximumXdeflection;}
-  */
-
-  servoX.write(xTVCAngle);
-  servoZ.write(zTVCAngle);
   
+  if(xTVCAngle > 90+maximumXdeflection)
+  {xTVCAngle = 90+maximumXdeflection;}
+  if(xTVCAngle < 90-maximumXdeflection) 
+  {xTVCAngle = 90-maximumXdeflection;}
+  
+  if(zTVCAngle > 90+maximumZdeflection)
+  {zTVCAngle = 90+maximumZdeflection;}
+  if(zTVCAngle < 90-maximumZdeflection) 
+  {zTVCAngle = 90-maximumZdeflection;}
+
+  //Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
+  //if(zAngle < acceptableMargin || xAngle > acceptableMargin*-1)
+  {
+    //servoX.write(90);
+  }
+  //else
+  {
+    servoX.write(xTVCAngle);
+  }
+  //if(zAngle < acceptableMargin || zAngle > acceptableMargin*-1)
+  {
+    //servoZ.write(90);
+  }
+  //else
+  {
+    servoZ.write(zTVCAngle);
+  }
   //update the errors in preparation for the next loop
   previousXError = currentXError;
   previousZError = currentZError;
