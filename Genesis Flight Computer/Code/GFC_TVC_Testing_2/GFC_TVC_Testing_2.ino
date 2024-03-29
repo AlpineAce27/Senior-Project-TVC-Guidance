@@ -92,9 +92,9 @@ float deltaT = 1/refresh;
 long loop_timer;
 
 //PID variables
-float pGain = 50; //
-float iGain = 0;
-float dGain = 0;
+float pGain = 25; //
+float iGain = 30;
+float dGain = 20;
 
 //x axis PID components
 float previousXError = 0; 
@@ -113,7 +113,7 @@ float derivativeZError = 0;
 //other variables
 float xAngleDesired = 0;
 float zAngleDesired = 0;
-float acceptableMargin = 1;
+float acceptableMargin = 1; //this is the accetable deviation from 0 in degrees (+ and -)
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
@@ -259,6 +259,7 @@ void setup()
   total = 0;
 
   //TVC deflection test
+  /*
   servoX.write(90+maximumXdeflection);
   delay(500);
   servoX.write(90-maximumXdeflection);
@@ -286,7 +287,7 @@ void setup()
   servoX.write(90);
   servoZ.write(90);
   delay(5000);
-
+  */
  //the arming key must be inserted for the program to continue
   Serial.println("Waiting on arming key");
   while (digitalRead(arm) == HIGH)
@@ -325,7 +326,7 @@ void setup()
   Serial.print(xAngle); Serial.print("  "); Serial.print(zAngle); Serial.print("  ");
   
   //beep loudly to indicate startup
-  //digitalWrite(buzzer, HIGH);
+  digitalWrite(buzzer, HIGH);
   delay(2000);
   digitalWrite(buzzer, LOW);
   
@@ -364,8 +365,8 @@ void loop()
   //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
   
   //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
-  xTVCAngle = xTVCAngle + proportionalXError*pGain/100 + integralXError*iGain/100 + derivativeXError*dGain/100;
-  zTVCAngle = zTVCAngle + proportionalZError*pGain/100 + integralZError*iGain/100 + derivativeZError*dGain/100;
+  xTVCAngle = xTVCAngle - (proportionalXError*pGain/10 + integralXError*iGain/10 + derivativeXError*dGain/10);
+  zTVCAngle = zTVCAngle - (proportionalZError*pGain/10 + integralZError*iGain/10 + derivativeZError*dGain/10);
   
   
 
@@ -382,7 +383,7 @@ void loop()
   {zTVCAngle = 90-maximumZdeflection;}
 
   //Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
-  //if(zAngle < acceptableMargin || xAngle > acceptableMargin*-1)
+  //if(xAngle < acceptableMargin || xAngle > 90-acceptableMargin*-1)
   {
     //servoX.write(90);
   }
@@ -390,14 +391,16 @@ void loop()
   {
     servoX.write(xTVCAngle);
   }
-  //if(zAngle < acceptableMargin || zAngle > acceptableMargin*-1)
+
+  //if(zAngle < 90+acceptableMargin || zAngle > 90-acceptableMargin*-1)
   {
     //servoZ.write(90);
   }
-  //else
+ // else
   {
-    servoZ.write(zTVCAngle);
+    //servoZ.write(zTVCAngle);
   }
+
   //update the errors in preparation for the next loop
   previousXError = currentXError;
   previousZError = currentZError;
