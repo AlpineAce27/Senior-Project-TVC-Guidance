@@ -126,98 +126,38 @@ void setup()
   Serial.println("IMU Initialized");
 
   //SD Card
-  if (!SD.begin(SDCS)) 
-    {
-    Serial.println("Card failed, or not present");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
-  }
-  else
-  {Serial.println("SD Card initialized.");}
+  if (!SD.begin(SDCS)) {Serial.println("Card failed, or not present"); sadBeeps(); while (1) delay(10);}
+  else{Serial.println("SD Card initialized.");}
 
   //Flash SD
-  if (!SD.begin(FlashCS)) 
-    {
-    Serial.println("Flash SD failed.");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
-  }
-  else
-  {Serial.println("Flash SD initialized.");}
+  //if (!SD.begin(FlashCS)) {Serial.println("Flash SD failed.");sadBeeps(); while (1) delay(10);}
+  //else{Serial.println("Flash SD initialized.");}
 
   //Barometer
-  if (!bmp.begin()) {
-    Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
-                      "try a different address!"));
-    Serial.print("SensorID was: 0x"); Serial.println(bmp.sensorID(),16);
-    Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-    Serial.print("        ID of 0x60 represents a BME 280.\n");
-    Serial.print("        ID of 0x61 represents a BME 680.\n");
-    while (1) delay(10);
-  }
-  else
-  {Serial.println("Barometer initialized.");}
+  if (!bmp.begin()) {Serial.println("Barometer failed."); sadBeeps(); while (1) delay(10); }
+  else{Serial.println("Barometer initialized.");}
   
-  
-
-  digitalWrite(greenLED, HIGH);
-  tone(buzzer, happyTone);
-  delay(500);
-  noTone(buzzer);
-  delay(500);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  delay(100);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  digitalWrite(greenLED, LOW);
+  neutralBeeps();
 
   //We need to calibrate the IMU before we can effectively use it. Here we take many readings and averge them to get offset values
   Serial.println("Calibrating IMU. Please do not touch the vehicle.");
   for(int i = 1; i <= calibrationPoints; i++)
-    {
-      gx = imu1.getRotationX();            
-      total = total + gx;   
-    }
+    {gx = imu1.getRotationX(); total = total + gx;}
     //when the loop is finished, calculate the average of all the points and set it as the gyro X offset
     gxOffset = total/calibrationPoints;
-  Serial.print("Gyro X Offset Value: "); Serial.println(gxOffset);
-  total = 0;
+  Serial.print("Gyro X Offset Value: "); Serial.println(gxOffset); total = 0;
 
   for(int i = 1; i <= calibrationPoints; i++)
-    {
-      gz = imu1.getRotationZ();            
-      total = total + gz;    
-    }
+    {gz = imu1.getRotationZ(); total = total + gz;}
     //when the loop is finished, calculate the average of all the points and set it as the gyro Z offset
     gzOffset = total/calibrationPoints;
-  Serial.print("Gyro Z Offset Value: "); Serial.println(gzOffset);
-  total = 0;
+  Serial.print("Gyro Z Offset Value: "); Serial.println(gzOffset); total = 0;
 
   for(int i = 1; i <= calibrationPoints; i++)
-    {
-      gy = imu1.getRotationY();            
-      total = total + gy;    
-    }
+    {gy = imu1.getRotationY(); total = total + gy;}
     //when the loop is finished, calculate the average of all the points and set it as the gyro Z offset
     gyOffset = total/calibrationPoints;
-  Serial.print("Gyro Y Offset Value: "); Serial.println(gyOffset);
-  total = 0;
+  Serial.print("Gyro Y Offset Value: "); Serial.println(gyOffset); total = 0;
 
   /*once the vehicle is settled, use the accelerometers on the IMU to determine the current orientation of the vehicle 
   and assign them to the X Y and Z angle values. This will be the starting point for the control to kick in once the vehicle starts moving. */
@@ -228,20 +168,14 @@ void setup()
   zAngle = ((180/3.1415)*acos(az/1)-90)*-1;
   Serial.print(xAngle); Serial.print("  "); Serial.print(zAngle); Serial.println("  ");
   
-  //show all the setup is complete
-  digitalWrite(greenLED, HIGH);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  delay(100);
-  digitalWrite(greenLED, LOW);
-  tone(buzzer, happyTone);
-  delay(250);
-  noTone(buzzer);
-  
-  File dataFile;
+  File myFile = SD.open("test.txt", FILE_WRITE);
+  myFile.println("File created");
+  myFile.close();
+ 
+  happyBeeps();
 
-   for(int i = 0; i<10; i++)
+  
+  for(int i = 0; i<5; i++)
   {
   String dataString = "";
 
@@ -254,22 +188,68 @@ void setup()
   gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  //Serial.print("X: "); Serial.print(gx); Serial.print("deg/sec"); Serial.print("  ");
   gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  //Serial.print("Y: "); Serial.print(gy); Serial.print("deg/sec"); Serial.print("  ");
   gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  //Serial.print("Z: "); Serial.print(gy); Serial.print("deg/sec"); Serial.print("  ");
-  dataString = String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String (az) + ", " + String (gx) + ", " + String (gy) + ", " + String (gz);
-  SD.open("dataLog.txt", FILE_WRITE);
+  dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String (az) + ", " + String (gx) + ", " + String (gy) + ", " + String (gz);
   Serial.println(dataString);
-  delay(1000);
+  
+  //record that data to the SD card
+  File myFile = SD.open("test.txt", FILE_WRITE);
+  myFile.println(dataString);
+  myFile.close();
+  
+  
+  
   }
   
-  
-  //save this data to a file on the flash SD
+  Serial.println("Data recording finished");
 
-  //copy the data from the flash SD to the SD Card
+  Serial.println("Reading back the data");
+  delay(2000);
+  myFile = SD.open("test.txt");
+  while(myFile.available())
+  {Serial.write(myFile.read());}
+  myFile.close();
 }
-
 
 void loop()
 
 {
  
 
+}
+
+void happyBeeps()
+{
+  digitalWrite(greenLED, HIGH);
+  tone(buzzer, happyTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(greenLED, LOW);
+  tone(buzzer, happyTone);
+  delay(250);
+  noTone(buzzer);
+}
+void neutralBeeps()
+{
+  digitalWrite(blueLED, HIGH);
+  tone(buzzer, neutralTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(blueLED, LOW);
+  tone(buzzer, neutralTone);
+  delay(250);
+  noTone(buzzer);
+}
+void sadBeeps()
+{
+  digitalWrite(redLED, HIGH);
+  tone(buzzer, sadTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(redLED, LOW);
+  tone(buzzer, sadTone);
+  delay(250);
+  noTone(buzzer);
 }

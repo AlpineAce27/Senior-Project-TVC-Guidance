@@ -44,8 +44,10 @@ const int arm =         23;
 //Flight Logic Variables
 bool armed = false;
 bool inFlight = false;
-bool landed = false;
 bool dataTransferred = false;
+bool apogeeReached = false;
+int  dataThreshold = 100;
+int  dataCount = 0;
 
 //IMU gyro variables
 float gx;
@@ -114,6 +116,9 @@ float derivativeZError = 0;
 float xAngleDesired = 0;
 float zAngleDesired = 0;
 float acceptableMargin = 1; //this is the accetable deviation from 0 in degrees (+ and -)
+float baroReading = 0;
+float prevBaroReading = 0;
+float tempReading;
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
@@ -152,52 +157,24 @@ void setup()
   imu1.setFullScaleAccelRange(AFS_SEL);
   Serial.println("IMU Initialized");
 
-
-
   //SD Card
-  if (!SD.begin(SDCS)) 
-    {
-    Serial.println("Card failed, or not present");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
+  if(!SD.begin(SDCS))
+  {
+    sadBeeps(); while(0==0){delay(10);}
   }
-  else
-  {Serial.println("SD Card initialized.");}
-
-  //Flash SD
-  if (!SD.begin(FlashCS)) 
-    {
-    Serial.println("Flash SD failed.");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
+  else 
+  {
+    Serial.println("SD Card initialized.");
   }
-  else
-  {Serial.println("Flash SD initialized.");}
   
-  if (!bmp.begin()) {
-    Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
-                      "try a different address!"));
-    Serial.print("SensorID was: 0x"); Serial.println(bmp.sensorID(),16);
-    Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-    Serial.print("        ID of 0x60 represents a BME 280.\n");
-    Serial.print("        ID of 0x61 represents a BME 680.\n");
-    while (1) delay(10);
+  if(!bmp.begin())
+  {
+    sadBeeps(); while(0==0){delay(10);}
   }
   else
-  {Serial.println("Barometer initialized.");}
+  {
+    Serial.println("Barometer initialized.");
+  }
   
   //define outputs and inputst.
   pinMode(redLED, OUTPUT);
@@ -214,18 +191,7 @@ void setup()
   servoZ.write(zTVCAngle);
 
   digitalWrite(greenLED, HIGH);
-  tone(buzzer, happyTone);
-  delay(500);
-  noTone(buzzer);
-  delay(500);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  delay(100);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  digitalWrite(greenLED, LOW);
+  happyBeeps();
 
   //We need to calibrate the IMU before we can effectively use it. Here we take many readings and averge them to get offset values
   for(int i = 1; i <= calibrationPoints; i++)
@@ -258,36 +224,6 @@ void setup()
   Serial.print("Gyro Y Offset Value: "); Serial.println(gyOffset);
   total = 0;
 
-  //TVC deflection test
-  /*
-  servoX.write(90+maximumXdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  delay(500);
-  servoX.write(90);
-  delay(500);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoZ.write(90);
-  delay(500);
-  servoX.write(90+maximumXdeflection);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoX.write(90+maximumXdeflection);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoX.write(90);
-  servoZ.write(90);
-  delay(5000);
-  */
  //the arming key must be inserted for the program to continue
   Serial.println("Waiting on arming key");
   while (digitalRead(arm) == HIGH)
@@ -306,12 +242,7 @@ void setup()
   /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
   Serial.println("Vehicle Armed.");
-  digitalWrite(greenLED, HIGH);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  delay(100);
-  digitalWrite(greenLED, HIGH);
+  happyBeeps();
   armed = true;
   inFlight = false;
   delay(5000);
@@ -323,88 +254,162 @@ void setup()
   az = (imu1.getAccelerationZ() - azOffset)/accelScaleFactor;
   xAngle = ((180/3.1415)*acos(ax/1)-90)*-1;
   zAngle = ((180/3.1415)*acos(az/1)-90)*-1;
-  Serial.print(xAngle); Serial.print("  "); Serial.print(zAngle); Serial.print("  ");
+  File myFile = SD.open("data.txt", FILE_WRITE);
+  myFile.println("Starting Orientation  X:" + String(xAngle) + "  Z:" + String(zAngle));
+  myFile.close();
   
   //beep loudly to indicate startup
+  neutralBeeps();
   digitalWrite(buzzer, HIGH);
   delay(2000);
   digitalWrite(buzzer, LOW);
   
 }
 
+//Flight Logic Variables
+//armed
+//inFlight
+//landed
+//dataTransferred
+//apogeeReached
 //---------------------------------------------------------------LOOP---------------------------------------------------------------
+
 void loop() 
 {
   loop_timer = millis();
 
-  //read the angular velocities from the sensor
-  gx = imu1.getRotationX();
-  gz = imu1.getRotationZ();
-
-  //adjust these values using the scale factor from the data sheet
-  angularVelX = (gx - gxOffset)/gyroScaleFactor;
-  angularVelZ = (gz - gzOffset)/gyroScaleFactor;
-
-  //convert the angular velocities into angular positions
-  xAngle = angularVelX*deltaT + xAngle; 
-  zAngle = angularVelZ*deltaT + zAngle;
-  Serial.print(xAngle); Serial.print(" | "); Serial.println(zAngle);
-
-  //determine the error between where we are, and where we want to be
-  currentXError = xAngleDesired - xAngle;
-  currentZError = zAngleDesired - zAngle;
-
-  //apply this error into the PID components
-  proportionalXError = currentXError;
-  proportionalZError = currentZError;
-  integralXError = integralXError + currentXError*deltaT;
-  integralZError = integralZError + currentZError*deltaT;
-  derivativeXError = (currentXError - previousXError)/deltaT;
-  derivativeZError = (currentZError = previousZError)/deltaT;
-
-  //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
-  
-  //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
-  xTVCAngle = xTVCAngle - (proportionalXError*pGain/10 + integralXError*iGain/10 + derivativeXError*dGain/10);
-  zTVCAngle = zTVCAngle - (proportionalZError*pGain/10 + integralZError*iGain/10 + derivativeZError*dGain/10);
-  
-  
-
-  //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
-  
-  if(xTVCAngle > 90+maximumXdeflection)
-  {xTVCAngle = 90+maximumXdeflection;}
-  if(xTVCAngle < 90-maximumXdeflection) 
-  {xTVCAngle = 90-maximumXdeflection;}
-  
-  if(zTVCAngle > 90+maximumZdeflection)
-  {zTVCAngle = 90+maximumZdeflection;}
-  if(zTVCAngle < 90-maximumZdeflection) 
-  {zTVCAngle = 90-maximumZdeflection;}
-
-  //Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
-  //if(xAngle < acceptableMargin || xAngle > 90-acceptableMargin*-1)
+  //on the pad
+  if(inFlight == false && armed == true)
   {
-    //servoX.write(90);
+    ay = imu1.getAccelerationY()/accelScaleFactor;
+    if(ay >= 1.5) {digitalWrite(redLED, HIGH); inFlight = true;}
   }
-  //else
-  {
+
+  //ascent
+  if(inFlight == true && apogeeReached == false)
+  { //read the angular velocities from the sensor
+    gx = imu1.getRotationX();
+    gz = imu1.getRotationZ();
+    //adjust these values using the scale factor from the data sheet
+    angularVelX = (gx - gxOffset)/gyroScaleFactor;
+    angularVelZ = (gz - gzOffset)/gyroScaleFactor;
+    //convert the angular velocities into angular positions
+    xAngle = angularVelX*deltaT + xAngle; 
+    zAngle = angularVelZ*deltaT + zAngle;
+    Serial.print(xAngle); Serial.print(" | "); Serial.println(zAngle);
+    //determine the error between where we are, and where we want to be
+    currentXError = xAngleDesired - xAngle;
+    currentZError = zAngleDesired - zAngle;
+    //apply this error into the PID components
+    proportionalXError = currentXError;
+    proportionalZError = currentZError;
+    integralXError = integralXError + currentXError*deltaT;
+    integralZError = integralZError + currentZError*deltaT;
+    derivativeXError = (currentXError - previousXError)/deltaT;
+    derivativeZError = (currentZError = previousZError)/deltaT; 
+    //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
+    xTVCAngle = xTVCAngle - (proportionalXError*pGain/10 + integralXError*iGain/10 + derivativeXError*dGain/10);
+    zTVCAngle = zTVCAngle - (proportionalZError*pGain/10 + integralZError*iGain/10 + derivativeZError*dGain/10);
+    //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
+    if(xTVCAngle > 90+maximumXdeflection) {xTVCAngle = 90+maximumXdeflection;}
+    if(xTVCAngle < 90-maximumXdeflection) {xTVCAngle = 90-maximumXdeflection;}
+    if(zTVCAngle > 90+maximumZdeflection) {zTVCAngle = 90+maximumZdeflection;}
+    if(zTVCAngle < 90-maximumZdeflection) {zTVCAngle = 90-maximumZdeflection;}
+    //move the servos to the new angles
     servoX.write(xTVCAngle);
+    servoZ.write(zTVCAngle);
+    //update the errors in preparation for the next loop
+    previousXError = currentXError;
+    previousZError = currentZError;
+    //log data
+    String dataString = "";
+    baroReading = bmp.readPressure();                       tempReading = bmp.readTemperature();                    
+    ax = imu1.getAccelerationX()/accelScaleFactor;          ay = imu1.getAccelerationY()/accelScaleFactor;          az = imu1.getAccelerationZ()/accelScaleFactor;          
+    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
+    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
+    File myFile = SD.open("data.txt", FILE_WRITE);
+    myFile.println(dataString);
+    myFile.close();
+    //apogee detction
+    if (baroReading < prevBaroReading) {dataCount++;}
+    else {dataCount = 0;}
+    if (dataCount > dataThreshold)
+      {
+      apogeeReached = true;
+      File myFile = SD.open("data.txt", FILE_WRITE);
+      myFile.println("Apogee detected.");
+      myFile.close();
+      digitalWrite(pyroPin, HIGH);
+      digitalWrite(buzzer, HIGH);
+      delay(1000);
+      digitalWrite(pyroPin, LOW);
+      digitalWrite(buzzer, LOW);
+      servoX.write(90);
+      servoZ.write(90);
+      dataCount = 0;
+      }
   }
 
-  //if(zAngle < 90+acceptableMargin || zAngle > 90-acceptableMargin*-1)
+  //descent
+  if(inFlight == true && apogeeReached == true)
   {
-    //servoZ.write(90);
+    String dataString = "";
+    baroReading = bmp.readPressure();                       tempReading = bmp.readTemperature();                    
+    ax = imu1.getAccelerationX()/accelScaleFactor;          ay = imu1.getAccelerationY()/accelScaleFactor;          az = imu1.getAccelerationZ()/accelScaleFactor;          
+    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
+    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
+    File myFile = SD.open("data.txt", FILE_WRITE);
+    myFile.println(dataString);
+    myFile.close();
+    
+    //if (ay < //previous ay-.1 or ay > previous ay+.1) {dataCount++;}
+    //else {dataCount = 0;}
+    if (dataCount > dataThreshold)
+    {
+      //we have landed
+      while(1==1){digitalWrite(greenLED, HIGH); delay(10);}
+    }
+    
   }
- // else
-  {
-    //servoZ.write(zTVCAngle);
-  }
-
-  //update the errors in preparation for the next loop
-  previousXError = currentXError;
-  previousZError = currentZError;
-
   while(millis() < loop_timer + 1000/refresh); {} 
 
+}
+
+void happyBeeps()
+{
+  digitalWrite(greenLED, HIGH);
+  tone(buzzer, happyTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(greenLED, LOW);
+  tone(buzzer, happyTone);
+  delay(250);
+  noTone(buzzer);
+}
+
+void neutralBeeps()
+{
+  digitalWrite(blueLED, HIGH);
+  tone(buzzer, neutralTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(blueLED, LOW);
+  tone(buzzer, neutralTone);
+  delay(250);
+  noTone(buzzer);
+}
+
+void sadBeeps()
+{
+  digitalWrite(redLED, HIGH);
+  tone(buzzer, sadTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(redLED, LOW);
+  tone(buzzer, sadTone);
+  delay(250);
+  noTone(buzzer);
 }

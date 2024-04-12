@@ -15,6 +15,7 @@ Servo servoZ;
 Servo servoAux1;
 Servo servoAux2;
 
+
 //---------------------------------------------------------------PINS-------------------------------------------------------------------
 const int Servo1Pin =   2;
 const int Servo2Pin =   3;
@@ -36,7 +37,6 @@ const int SDCS =        20;
 const int FlashCS =     21;
 const int Aux22 =       22;
 const int arm =         23;
-
 
 
 //---------------------------------------------------------------VARIABLES---------------------------------------------------------------
@@ -92,9 +92,9 @@ float deltaT = 1/refresh;
 long loop_timer;
 
 //PID variables
-float pGain = 25; //
-float iGain = 30;
-float dGain = 20;
+float pGain = 10; //
+float iGain = 0;
+float dGain = 0;
 
 //x axis PID components
 float previousXError = 0; 
@@ -114,11 +114,14 @@ float derivativeZError = 0;
 float xAngleDesired = 0;
 float zAngleDesired = 0;
 float acceptableMargin = 1; //this is the accetable deviation from 0 in degrees (+ and -)
+float baroReading;
+float tempReading;
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
 const int neutralTone = 3000;
 const int sadTone = 2000;
+
 
 //---------------------------------------------------------------SETUP---------------------------------------------------------------
 void setup() 
@@ -141,6 +144,7 @@ void setup()
   delay(500);
   digitalWrite(greenLED, LOW);
   
+  
   //------------------------Initialize Components------------------
   Wire.begin();
   SPI.begin();
@@ -152,52 +156,15 @@ void setup()
   imu1.setFullScaleAccelRange(AFS_SEL);
   Serial.println("IMU Initialized");
 
-
-
   //SD Card
-  if (!SD.begin(SDCS)) 
-    {
-    Serial.println("Card failed, or not present");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
-  }
-  else
-  {Serial.println("SD Card initialized.");}
-
-  //Flash SD
-  if (!SD.begin(FlashCS)) 
-    {
-    Serial.println("Flash SD failed.");
-    {
-      digitalWrite(redLED, HIGH);
-      tone(buzzer, sadTone);
-      delay(100);
-      digitalWrite(redLED, LOW);
-      noTone(buzzer);
-      delay(3000);
-    }
-  }
-  else
-  {Serial.println("Flash SD initialized.");}
-  
-  if (!bmp.begin()) {
-    Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
-                      "try a different address!"));
-    Serial.print("SensorID was: 0x"); Serial.println(bmp.sensorID(),16);
-    Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-    Serial.print("        ID of 0x60 represents a BME 280.\n");
-    Serial.print("        ID of 0x61 represents a BME 680.\n");
-    while (1) delay(10);
-  }
-  else
-  {Serial.println("Barometer initialized.");}
+  if (!SD.begin(SDCS)) {Serial.println("Card failed, or not present"); sadBeeps();}
+  else {Serial.println("SD Card initialized.");}
+  File myFile = SD.open("data.txt", FILE_WRITE);
+  myFile.println("File Created");
+  myFile.close();
+  //barometer
+  if (!bmp.begin()) {Serial.println("Barometer Failed."); sadBeeps();}
+  else {Serial.println("Barometer initialized.");}
   
   //define outputs and inputst.
   pinMode(redLED, OUTPUT);
@@ -206,8 +173,6 @@ void setup()
   pinMode(arm, INPUT_PULLUP);
 
   //attach Servo's to their respective pins
-  servoAux1.attach(Servo3Pin);
-  servoAux1.write(90);
   servoX.attach(Servo1Pin);
   servoX.write(xTVCAngle);
   servoZ.attach(Servo2Pin);
@@ -258,36 +223,6 @@ void setup()
   Serial.print("Gyro Y Offset Value: "); Serial.println(gyOffset);
   total = 0;
 
-  //TVC deflection test
-  /*
-  servoX.write(90+maximumXdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  delay(500);
-  servoX.write(90);
-  delay(500);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoZ.write(90);
-  delay(500);
-  servoX.write(90+maximumXdeflection);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoX.write(90+maximumXdeflection);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  servoZ.write(90-maximumZdeflection);
-  delay(500);
-  servoX.write(90-maximumXdeflection);
-  servoZ.write(90+maximumZdeflection);
-  delay(500);
-  servoX.write(90);
-  servoZ.write(90);
-  delay(5000);
-  */
  //the arming key must be inserted for the program to continue
   Serial.println("Waiting on arming key");
   while (digitalRead(arm) == HIGH)
@@ -306,12 +241,7 @@ void setup()
   /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
   Serial.println("Vehicle Armed.");
-  digitalWrite(greenLED, HIGH);
-  tone(buzzer, happyTone);
-  delay(100);
-  noTone(buzzer);
-  delay(100);
-  digitalWrite(greenLED, HIGH);
+  happyBeeps();
   armed = true;
   inFlight = false;
   delay(5000);
@@ -365,8 +295,8 @@ void loop()
   //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
   
   //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
-  xTVCAngle = xTVCAngle - (proportionalXError*pGain/10 + integralXError*iGain/10 + derivativeXError*dGain/10);
-  zTVCAngle = zTVCAngle - (proportionalZError*pGain/10 + integralZError*iGain/10 + derivativeZError*dGain/10);
+  xTVCAngle = xTVCAngle - (proportionalXError*pGain + integralXError*iGain + derivativeXError*dGain);
+  zTVCAngle = zTVCAngle - (proportionalZError*pGain + integralZError*iGain + derivativeZError*dGain);
   
   
 
@@ -398,13 +328,67 @@ void loop()
   }
  // else
   {
-    //servoZ.write(zTVCAngle);
+    servoZ.write(zTVCAngle);
   }
 
   //update the errors in preparation for the next loop
   previousXError = currentXError;
   previousZError = currentZError;
 
+  //Datalogging
+  String dataString = "";
+  baroReading = bmp.readPressure();                       //Serial.print(baroReading); Serial.print(" Pa"); Serial.print(" - "); 
+  tempReading = bmp.readTemperature();                    //Serial.print(tempReading); Serial.print(" C"); Serial.print(" - ");
+  ax = imu1.getAccelerationX()/accelScaleFactor;          //Serial.print("X: "); Serial.print(ax); Serial.print("g"); Serial.print("  ");
+  ay = imu1.getAccelerationY()/accelScaleFactor;          //Serial.print("Y: "); Serial.print(ay); Serial.print("g"); Serial.print("  ");//(this should equal 1 if the rocket is pointed up and level)
+  az = imu1.getAccelerationZ()/accelScaleFactor;          //Serial.print("Z: "); Serial.print(az); Serial.print("g"); Serial.print(" - ");
+  gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  //Serial.print("X: "); Serial.print(gx); Serial.print("deg/sec"); Serial.print("  ");
+  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  //Serial.print("Y: "); Serial.print(gy); Serial.print("deg/sec"); Serial.print("  ");
+  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  //Serial.print("Z: "); Serial.print(gy); Serial.print("deg/sec"); Serial.print("  ");
+  dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
+  //Serial.println(dataString);
+  
+  //record that data to the SD card
+  //File myFile = SD.open("data.txt", FILE_WRITE);
+  //myFile.println(dataString);
+  //myFile.close();
   while(millis() < loop_timer + 1000/refresh); {} 
 
+}
+
+void happyBeeps()
+{
+  digitalWrite(greenLED, HIGH);
+  tone(buzzer, happyTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(greenLED, LOW);
+  tone(buzzer, happyTone);
+  delay(250);
+  noTone(buzzer);
+}
+void neutralBeeps()
+{
+  digitalWrite(blueLED, HIGH);
+  tone(buzzer, neutralTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(blueLED, LOW);
+  tone(buzzer, neutralTone);
+  delay(250);
+  noTone(buzzer);
+}
+void sadBeeps()
+{
+  digitalWrite(redLED, HIGH);
+  tone(buzzer, sadTone);
+  delay(100);
+  noTone(buzzer);
+  delay(100);
+  digitalWrite(redLED, LOW);
+  tone(buzzer, sadTone);
+  delay(250);
+  noTone(buzzer);
 }
