@@ -91,10 +91,10 @@ float refresh = 50; //this is in hz
 float deltaT = 1/refresh;
 long loop_timer;
 
-//PID variables
-float pGain = 10; //
+//-------------------------------------------------------------------------------------PID variables
+float pGain = 200; //
 float iGain = 0;
-float dGain = 0;
+float dGain = 100;
 
 //x axis PID components
 float previousXError = 0; 
@@ -231,14 +231,15 @@ void setup()
     armed = true;
   }
    //notify the user when the key is inserted
-  Serial.println("Arming key present");
+  /*Serial.println("Arming key present");
   digitalWrite(blueLED, LOW);
   armed = false;
   delay(100);
   //now that the arming key is inserted, we wait until it is removed to arm the vehicle and begin data logging
   while(digitalRead(arm) == LOW)
   { }
-  /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
+  
+  once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
   Serial.println("Vehicle Armed.");
   happyBeeps();
@@ -268,17 +269,17 @@ void loop()
   loop_timer = millis();
 
   //read the angular velocities from the sensor
-  gx = imu1.getRotationX();
-  gz = imu1.getRotationZ();
+  //gx = imu1.getRotationX();
+  //gz = imu1.getRotationZ();
 
   //adjust these values using the scale factor from the data sheet
-  angularVelX = (gx - gxOffset)/gyroScaleFactor;
-  angularVelZ = (gz - gzOffset)/gyroScaleFactor;
+  angularVelX = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;
+  angularVelZ = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;
 
   //convert the angular velocities into angular positions
   xAngle = angularVelX*deltaT + xAngle; 
   zAngle = angularVelZ*deltaT + zAngle;
-  Serial.print(xAngle); Serial.print(" | "); Serial.println(zAngle);
+  Serial.print("X:"); Serial.print(xAngle); Serial.print(" | "); Serial.print("Z:"); Serial.println(zAngle);
 
   //determine the error between where we are, and where we want to be
   currentXError = xAngleDesired - xAngle;
