@@ -94,10 +94,10 @@ float refresh = 50; //this is in hz
 float deltaT = 1/refresh;
 long loop_timer;
 
-//PID variables
-float pGain = 5; //
+//====================================================================PID variables
+float pGain = 0.6;
 float iGain = 0;
-float dGain = 2;
+float dGain = 0.1;
 
 //x axis PID components
 float previousXError = 0; 
@@ -284,8 +284,14 @@ void loop()
   if(inFlight == false && armed == true)
   {
     ay = imu1.getAccelerationY()/accelScaleFactor;
-    if(ay >= 1.2) {digitalWrite(redLED, HIGH); inFlight = true;}
-    Serial.println("Liftoff Detected");
+    if(ay >= 1.2) 
+    {digitalWrite(redLED, HIGH);
+    inFlight = true; 
+    File myFile = SD.open("data.txt", FILE_WRITE);
+    myFile.println(millis() + "Liftoff detected.");
+    myFile.close();
+    Serial.println("Liftoff detected");
+    }
   }
 
   //ascent
@@ -311,8 +317,8 @@ void loop()
     derivativeXError = (currentXError - previousXError)/deltaT;
     derivativeZError = (currentZError - previousZError)/deltaT; 
     //multiply these errors by their repsective gains, add them togehter and write the new angle to the servo it to the servo
-    xTVCAngle = xTVCAngle - (proportionalXError*pGain/10 + integralXError*iGain/10 + derivativeXError*dGain/10);
-    zTVCAngle = zTVCAngle - (proportionalZError*pGain/10 + integralZError*iGain/10 + derivativeZError*dGain/10);
+    xTVCAngle = xTVCAngle - (proportionalXError*pGain + integralXError*iGain + derivativeXError*dGain);
+    zTVCAngle = zTVCAngle - (proportionalZError*pGain + integralZError*iGain + derivativeZError*dGain);
     //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
     if(xTVCAngle > xTVCinitial+maximumXdeflection) {xTVCAngle = xTVCinitial+maximumXdeflection;}
   if(xTVCAngle < xTVCinitial-maximumXdeflection) {xTVCAngle = xTVCinitial-maximumXdeflection;}
@@ -330,29 +336,28 @@ void loop()
     ax = imu1.getAccelerationX()/accelScaleFactor;          ay = imu1.getAccelerationY()/accelScaleFactor;          az = imu1.getAccelerationZ()/accelScaleFactor;          
     gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
     dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
-    //File myFile = SD.open("data.txt", FILE_WRITE);
-    //myFile.println(dataString);
-    //myFile.close();
+    File myFile = SD.open("data.txt", FILE_WRITE);
+    myFile.println(dataString);
+    myFile.close();
     //apogee detction
     if (baroReading < prevBaroReading) {dataCount++;}
     else {dataCount = 0;}
     
-    if(millis()>60000)//=================================================================================this if statement is for testing
-    //if (dataCount > dataThreshold)//===================================================================this if statement is for flight
+    //if(millis()>60000)//=================================================================================this if statement is for testing
+    if (dataCount > dataThreshold)//===================================================================this if statement is for flight
       {
       digitalWrite(redLED, LOW);
       apogeeReached = true;
       File myFile = SD.open("data.txt", FILE_WRITE);
-      myFile.println("Apogee detected.");
-      Serial.println("Apogee detected");
+      myFile.println(millis() + "Apogee detected.");
       myFile.close();
       digitalWrite(pyroPin, HIGH);
       digitalWrite(buzzer, HIGH);
       delay(1000);
       digitalWrite(pyroPin, LOW);
       digitalWrite(buzzer, LOW);
-      servoX.write(90);
-      servoZ.write(90);
+      servoX.write(xTVCinitial);
+      servoZ.write(zTVCinitial);
       dataCount = 0;
       }
   }
@@ -369,10 +374,13 @@ void loop()
     //myFile.println(dataString);
     //myFile.close();
     
-    if (ax <= prevAccel+.1 && ax >= prevAccel-.1) {dataCount++; Serial.println(dataCount);}
+    if (ax <= prevAccel+0.01 && ax >= prevAccel-0.01) {dataCount++; Serial.println(dataCount);}
     else {dataCount = 0;}
     if (dataCount > dataThreshold)
     {
+      File myFile = SD.open("data.txt", FILE_WRITE);
+      myFile.println(millis() + "Landing detected.");
+      myFile.close();
       Serial.println("Landing Detected.");
       while(1==1){digitalWrite(greenLED, HIGH); delay(10);}
     }

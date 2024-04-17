@@ -70,7 +70,7 @@ int AFS_SEL = 2;
 //IMU Calibration variables
 float average;
 float total;
-int calibrationPoints = 2000;
+int calibrationPoints = 4000;
 
 //Angle variables, one for the set angle and one for the observed/measured angle
 float angularVelX = 0;
@@ -82,9 +82,10 @@ float zAngle = 0;
 
 int maximumXdeflection = 25;
 int maximumZdeflection = 25;
-int xTVCAngle = 90;
-int zTVCAngle = 90;
-int noseconeDeployedServoAngle = 60;
+int xTVCinitial = 100;
+int zTVCinitial = 97;
+int xTVCAngle = xTVCinitial;
+int zTVCAngle = zTVCinitial;
 
 //Timing variables
 float refresh = 50; //this is in hz
@@ -92,9 +93,9 @@ float deltaT = 1/refresh;
 long loop_timer;
 
 //-------------------------------------------------------------------------------------PID variables
-float pGain = 200; //
+float pGain = 0.6; //
 float iGain = 0;
-float dGain = 100;
+float dGain = 0.1;
 
 //x axis PID components
 float previousXError = 0; 
@@ -113,7 +114,7 @@ float derivativeZError = 0;
 //other variables
 float xAngleDesired = 0;
 float zAngleDesired = 0;
-float acceptableMargin = 1; //this is the accetable deviation from 0 in degrees (+ and -)
+float acceptableMargin = 10; //this is the accetable deviation from 0 in degrees (+ and -)
 float baroReading;
 float tempReading;
 
@@ -224,6 +225,7 @@ void setup()
   total = 0;
 
  //the arming key must be inserted for the program to continue
+  /*
   Serial.println("Waiting on arming key");
   while (digitalRead(arm) == HIGH)
   {
@@ -231,16 +233,15 @@ void setup()
     armed = true;
   }
    //notify the user when the key is inserted
-  /*Serial.println("Arming key present");
+  Serial.println("Arming key present");
   digitalWrite(blueLED, LOW);
   armed = false;
   delay(100);
   //now that the arming key is inserted, we wait until it is removed to arm the vehicle and begin data logging
   while(digitalRead(arm) == LOW)
   { }
-  
-  once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
-  before taking accel movements to determine orientation.*/
+  */
+  //once the key is removed, notify the user with some lights and beeps, and wait a few seconds for the vehicle to settle before taking accel movements to determine orientation.
   Serial.println("Vehicle Armed.");
   happyBeeps();
   armed = true;
@@ -291,7 +292,7 @@ void loop()
   integralXError = integralXError + currentXError*deltaT;
   integralZError = integralZError + currentZError*deltaT;
   derivativeXError = (currentXError - previousXError)/deltaT;
-  derivativeZError = (currentZError = previousZError)/deltaT;
+  derivativeZError = (currentZError - previousZError)/deltaT;
 
   //Serial.print(proportionalXError); Serial.print(" | "); Serial.print(integralXError); Serial.print(" | "); Serial.print(derivativeXError); Serial.println(" | ");
   
@@ -303,31 +304,26 @@ void loop()
 
   //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
   
-  if(xTVCAngle > 90+maximumXdeflection)
-  {xTVCAngle = 90+maximumXdeflection;}
-  if(xTVCAngle < 90-maximumXdeflection) 
-  {xTVCAngle = 90-maximumXdeflection;}
-  
-  if(zTVCAngle > 90+maximumZdeflection)
-  {zTVCAngle = 90+maximumZdeflection;}
-  if(zTVCAngle < 90-maximumZdeflection) 
-  {zTVCAngle = 90-maximumZdeflection;}
+  if(xTVCAngle > xTVCinitial+maximumXdeflection) {xTVCAngle = xTVCinitial+maximumXdeflection;}
+  if(xTVCAngle < xTVCinitial-maximumXdeflection) {xTVCAngle = xTVCinitial-maximumXdeflection;}
+  if(zTVCAngle > zTVCinitial+maximumZdeflection) {zTVCAngle = zTVCinitial+maximumZdeflection;}
+  if(zTVCAngle < zTVCinitial-maximumZdeflection) {zTVCAngle = zTVCinitial-maximumZdeflection;}
 
   //Serial.print(xTVCAngle); Serial.print(" | "); Serial.println(zTVCAngle);
-  //if(xAngle < acceptableMargin || xAngle > 90-acceptableMargin*-1)
+  //if(xAngle < 0+acceptableMargin && xAngle > 0-(acceptableMargin*-1))
   {
-    //servoX.write(90);
+    //servoX.write(xTVCinitial);
   }
   //else
   {
     servoX.write(xTVCAngle);
   }
 
-  //if(zAngle < 90+acceptableMargin || zAngle > 90-acceptableMargin*-1)
+  //if(zAngle < 0+acceptableMargin && zAngle > 0-(acceptableMargin*-1))
   {
-    //servoZ.write(90);
+   // servoZ.write(zTVCinitial);
   }
- // else
+  //else
   {
     servoZ.write(zTVCAngle);
   }
