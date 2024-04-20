@@ -48,6 +48,8 @@ bool dataTransferred = false;
 bool apogeeReached = false;
 int  dataThreshold = 100;
 int  dataCount = 0;
+long liftoffTime = 0;
+float prevAccel = 0;
 
 //IMU gyro variables
 float gx;
@@ -72,7 +74,7 @@ int AFS_SEL = 2;
 //IMU Calibration variables
 float average;
 float total;
-int calibrationPoints = 2000;
+int calibrationPoints = 4000;
 
 //Angle variables, one for the set angle and one for the observed/measured angle
 float angularVelX = 0;
@@ -120,7 +122,7 @@ float acceptableMargin = 1; //this is the accetable deviation from 0 in degrees 
 float baroReading = 0;
 float prevBaroReading = 0;
 float tempReading;
-float prevAccel = 0;
+
 
 //tone variables for the piezo buzzer
 const int happyTone = 3300;
@@ -160,6 +162,8 @@ void setup()
   Serial.println("IMU Initialized");
 
   //SD Card
+
+  /*
   if(!SD.begin(SDCS))
   {
     sadBeeps(); while(0==0){delay(10);}
@@ -168,6 +172,7 @@ void setup()
   {
     Serial.println("SD Card initialized.");
   }
+  */
   
   if(!bmp.begin())
   {
@@ -178,19 +183,12 @@ void setup()
     Serial.println("Barometer initialized.");
   }
   
+  
   //define outputs and inputst.
   pinMode(redLED, OUTPUT);
   pinMode(blueLED, OUTPUT);
   pinMode(greenLED, OUTPUT);
   pinMode(arm, INPUT_PULLUP);
-
-  //attach Servo's to their respective pins
-  servoAux1.attach(Servo3Pin);
-  servoAux1.write(90);
-  servoX.attach(Servo1Pin);
-  servoX.write(xTVCAngle);
-  servoZ.attach(Servo2Pin);
-  servoZ.write(zTVCAngle);
 
   digitalWrite(greenLED, HIGH);
   happyBeeps();
@@ -233,21 +231,32 @@ void setup()
     digitalWrite(blueLED, HIGH);
     armed = true;
   }
-   //notify the user when the key is inserted
+
+  //notify the user when the key is inserted
   Serial.println("Arming key present");
   digitalWrite(blueLED, LOW);
   armed = false;
-  delay(100);
+  delay(500);
+
   //now that the arming key is inserted, we wait until it is removed to arm the vehicle and begin data logging
   while(digitalRead(arm) == LOW)
-  { }
+  {delay(1);}
+
   /*once the key is removed, notify the user with some lights and beeps, and wait 10 seconds for the vehicle to settle
   before taking accel movements to determine orientation.*/
   Serial.println("Vehicle Armed.");
+  digitalWrite(redLED, HIGH);
   happyBeeps();
   armed = true;
   inFlight = false;
+  
+  //attach Servo's to their respective pins
+  servoX.attach(Servo1Pin);
+  servoX.write(xTVCAngle);
+  servoZ.attach(Servo2Pin);
+  servoZ.write(zTVCAngle);
   delay(5000);
+  digitalWrite(redLED, LOW);
 
   /*once the vehicle is settled, use the accelerometers on the IMU to determine the current orientation of the vehicle 
   and assign them to the X Y and Z angle values. This will be the starting point for the control to kick in once the vehicle starts moving. */
@@ -256,10 +265,15 @@ void setup()
   az = (imu1.getAccelerationZ() - azOffset)/accelScaleFactor;
   xAngle = ((180/3.1415)*acos(ax/1)-90)*-1;
   zAngle = ((180/3.1415)*acos(az/1)-90)*-1;
-  File myFile = SD.open("data.txt", FILE_WRITE);
-  myFile.println("Starting Orientation  X:" + String(xAngle) + "  Z:" + String(zAngle));
-  myFile.close();
-  
+
+  digitalWrite(greenLED, HIGH);
+  //File myFile = SD.open("data.txt", FILE_WRITE);
+  //myFile.println(millis() + "File Created.");
+  Serial.println(millis() + "File Created.");
+  //myFile.println("Starting Orientation  X:" + String(xAngle) + "  Z:" + String(zAngle));
+  Serial.println("Starting Orientation  X:" + String(xAngle) + "  Z:" + String(zAngle));
+  //myFile.close();
+  digitalWrite(greenLED, LOW);
   //beep loudly to indicate startup
   neutralBeeps();
   digitalWrite(buzzer, HIGH);
@@ -268,29 +282,25 @@ void setup()
   
 }
 
-//Flight Logic Variables
-//armed
-//inFlight
-//landed
-//dataTransferred
-//apogeeReached
 //---------------------------------------------------------------LOOP---------------------------------------------------------------
 
 void loop() 
 {
   loop_timer = millis();
+  //File myFile = SD.open("data.txt");
 
   //on the pad
   if(inFlight == false && armed == true)
   {
     ay = imu1.getAccelerationY()/accelScaleFactor;
+    
     if(ay >= 1.2) 
-    {digitalWrite(redLED, HIGH);
+    {
+    digitalWrite(redLED, HIGH);
+    liftoffTime = millis();
     inFlight = true; 
-    File myFile = SD.open("data.txt", FILE_WRITE);
-    myFile.println(millis() + "Liftoff detected.");
-    myFile.close();
-    Serial.println("Liftoff detected");
+    //myFile.println(millis() + "Liftoff detected.");
+    Serial.println(millis() + "Liftoff detected.");
     }
   }
 
@@ -321,9 +331,9 @@ void loop()
     zTVCAngle = zTVCAngle - (proportionalZError*pGain + integralZError*iGain + derivativeZError*dGain);
     //we dont want to stress the servos. for this reason we will put an effective maximum deflection value in, if the assigned value exceeds this maximum, we limit it
     if(xTVCAngle > xTVCinitial+maximumXdeflection) {xTVCAngle = xTVCinitial+maximumXdeflection;}
-  if(xTVCAngle < xTVCinitial-maximumXdeflection) {xTVCAngle = xTVCinitial-maximumXdeflection;}
-  if(zTVCAngle > zTVCinitial+maximumZdeflection) {zTVCAngle = zTVCinitial+maximumZdeflection;}
-  if(zTVCAngle < zTVCinitial-maximumZdeflection) {zTVCAngle = zTVCinitial-maximumZdeflection;}
+    if(xTVCAngle < xTVCinitial-maximumXdeflection) {xTVCAngle = xTVCinitial-maximumXdeflection;}
+    if(zTVCAngle > zTVCinitial+maximumZdeflection) {zTVCAngle = zTVCinitial+maximumZdeflection;}
+    if(zTVCAngle < zTVCinitial-maximumZdeflection) {zTVCAngle = zTVCinitial-maximumZdeflection;}
     //move the servos to the new angles
     servoX.write(xTVCAngle);
     servoZ.write(zTVCAngle);
@@ -332,25 +342,27 @@ void loop()
     previousZError = currentZError;
     //log data
     String dataString = "";
-    baroReading = bmp.readPressure();                       tempReading = bmp.readTemperature();                    
-    ax = imu1.getAccelerationX()/accelScaleFactor;          ay = imu1.getAccelerationY()/accelScaleFactor;          az = imu1.getAccelerationZ()/accelScaleFactor;          
-    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
-    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
-    File myFile = SD.open("data.txt", FILE_WRITE);
-    myFile.println(dataString);
-    myFile.close();
+    baroReading = bmp.readPressure();
+    tempReading = bmp.readTemperature();                   
+    ax = imu1.getAccelerationX()/accelScaleFactor;
+    ay = imu1.getAccelerationY()/accelScaleFactor;
+    az = imu1.getAccelerationZ()/accelScaleFactor;          
+    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;
+    gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;
+    gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
+    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(xAngle)+ ", " + String(zAngle)+ ", " + String(xTVCAngle)+ ", " + String(zTVCAngle);    File myFile = SD.open("data.txt", FILE_WRITE);
+    //myFile.println(dataString);
+    
     //apogee detction
     if (baroReading < prevBaroReading) {dataCount++;}
     else {dataCount = 0;}
     
-    //if(millis()>60000)//=================================================================================this if statement is for testing
-    if (dataCount > dataThreshold)//===================================================================this if statement is for flight
+    if(millis() > (3500+liftoffTime))//=================================================================================this if statement is for testing
+    //if (dataCount > dataThreshold)//===================================================================this if statement is for flight
       {
       digitalWrite(redLED, LOW);
       apogeeReached = true;
-      File myFile = SD.open("data.txt", FILE_WRITE);
-      myFile.println(millis() + "Apogee detected.");
-      myFile.close();
+      //myFile.println(millis() + "Apogee detected.");
       digitalWrite(pyroPin, HIGH);
       digitalWrite(buzzer, HIGH);
       delay(1000);
@@ -366,28 +378,36 @@ void loop()
   if(inFlight == true && apogeeReached == true)
   {
     String dataString = "";
-    baroReading = bmp.readPressure();                       tempReading = bmp.readTemperature();                    
-    ax = imu1.getAccelerationX()/accelScaleFactor;          ay = imu1.getAccelerationY()/accelScaleFactor;          az = imu1.getAccelerationZ()/accelScaleFactor;          
-    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;  gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;  gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
-    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(currentXError)+ ", " + String(currentZError);
-    //File myFile = SD.open("data.txt", FILE_WRITE);
+    baroReading = bmp.readPressure();
+    tempReading = bmp.readTemperature();                   
+    ax = imu1.getAccelerationX()/accelScaleFactor;
+    ay = imu1.getAccelerationY()/accelScaleFactor;
+    az = imu1.getAccelerationZ()/accelScaleFactor;          
+    gx = (imu1.getRotationX() - gxOffset)/gyroScaleFactor;
+    gy = (imu1.getRotationY() - gyOffset)/gyroScaleFactor;
+    gz = (imu1.getRotationZ() - gzOffset)/gyroScaleFactor;  
+    dataString = String(millis()) + ", " + String(baroReading) + ", " + String(tempReading) + ", " + String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz) + ", " + String(xAngle)+ ", " + String(zAngle)+ ", " + String(xTVCAngle)+ ", " + String(zTVCAngle);    File myFile = SD.open("data.txt", FILE_WRITE);
     //myFile.println(dataString);
     //myFile.close();
     
-    if (ax <= prevAccel+0.01 && ax >= prevAccel-0.01) {dataCount++; Serial.println(dataCount);}
+    //landing detection
+    if (ax <= prevAccel+0.012 && ax >= prevAccel-0.012)
+    {
+      dataCount++; //Serial.println(dataCount);
+    }
     else {dataCount = 0;}
+
     if (dataCount > dataThreshold)
     {
-      File myFile = SD.open("data.txt", FILE_WRITE);
-      myFile.println(millis() + "Landing detected.");
-      myFile.close();
+      //myFile.println(millis() + "Landing detected.");
       Serial.println("Landing Detected.");
-      while(1==1){digitalWrite(greenLED, HIGH); delay(10);}
+      //myFile.close();
+      while(1==1){digitalWrite(greenLED, HIGH); delay(1);}
     }
     prevAccel = ax;
   }
-  while(millis() < loop_timer + 1000/refresh); {} 
-
+  //myFile.close();
+  while(millis() < loop_timer + 1000/refresh){delay(1);} 
 }
 
 void happyBeeps()
